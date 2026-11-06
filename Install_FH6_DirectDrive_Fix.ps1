@@ -1,14 +1,16 @@
 param(
     [switch]$Uninstall,
-    [switch]$SkipAutoUpdateTask
+    [switch]$AutoMode
 )
 
 $ErrorActionPreference = 'Stop'
 
-Write-Host "================================================================" -ForegroundColor Cyan
-Write-Host "  Forza Horizon 6 - Universal Direct Drive FFB Physics Patcher  " -ForegroundColor Cyan
-Write-Host "================================================================" -ForegroundColor Cyan
-Write-Host ""
+if (-not $AutoMode) {
+    Write-Host "================================================================" -ForegroundColor Cyan
+    Write-Host "  Forza Horizon 6 - Universal Direct Drive FFB Physics Patcher  " -ForegroundColor Cyan
+    Write-Host "================================================================" -ForegroundColor Cyan
+    Write-Host ""
+}
 
 # 1. Auto-detect Forza Horizon 6 installation directory (MS Store / Xbox App or Steam)
 $mediaDir = $null
@@ -36,7 +38,7 @@ foreach ($c in $candidates) {
     }
 }
 
-if (-not $mediaDir) {
+if (-not $mediaDir -and (-not $AutoMode)) {
     Write-Host "Could not auto-detect Forza Horizon 6 folder. Please select the 'Forza Horizon 6' folder..." -ForegroundColor Yellow
     Add-Type -AssemblyName System.Windows.Forms
     $dlg = New-Object System.Windows.Forms.FolderBrowserDialog
@@ -53,16 +55,13 @@ if (-not $mediaDir) {
 }
 
 if (-not $mediaDir -or -not (Test-Path "$mediaDir\wheeltunablesettingspc.zip")) {
-    Write-Host "ERROR: Could not find wheeltunablesettingspc.zip. Exiting." -ForegroundColor Red
+    if (-not $AutoMode) {
+        Write-Host "ERROR: Could not find wheeltunablesettingspc.zip. Exiting." -ForegroundColor Red
+    }
     exit 1
 }
 
-Write-Host "Found Forza Horizon 6 media directory:" -ForegroundColor Green
-Write-Host "  $mediaDir"
-Write-Host ""
-
 $wtsPath = "$mediaDir\wheeltunablesettingspc.zip"
-$impPath = "$mediaDir\inputmappingprofiles.zip"
 $backupDir = "$env:USERPROFILE\Documents\FH6_DirectDrive_FFB_Backup"
 New-Item -ItemType Directory -Path $backupDir -Force | Out-Null
 
@@ -71,22 +70,32 @@ if ($Uninstall) {
         Copy-Item "$backupDir\wheeltunablesettingspc_stock.zip" $wtsPath -Force
         Write-Host "Restored stock wheeltunablesettingspc.zip" -ForegroundColor Green
     }
-    if (Test-Path "$backupDir\inputmappingprofiles_stock.zip") {
-        Copy-Item "$backupDir\inputmappingprofiles_stock.zip" $impPath -Force
-        Write-Host "Restored stock inputmappingprofiles.zip" -ForegroundColor Green
-    }
     Unregister-ScheduledTask -TaskName "FH6_Universal_DD_AutoPatcher" -Confirm:$false -ErrorAction SilentlyContinue
-    Write-Host "Uninstalled Universal Direct Drive FFB Patch and restored stock files." -ForegroundColor Cyan
+    Write-Host "Removed auto-update task (if registered) and restored stock files." -ForegroundColor Cyan
     exit 0
+}
+
+# In AutoMode (triggered by Windows after a game update), check in ~30ms if already patched
+if ($AutoMode) {
+    $wtsBytes = [System.IO.File]::ReadAllBytes($wtsPath)
+    $wtsText = [System.Text.Encoding]::ASCII.GetString($wtsBytes)
+    if ($wtsText.Contains("ControllerFFB-0X16D00D66.ini")) {
+        exit 0
+    }
+}
+
+if (-not $AutoMode) {
+    Write-Host "Found Forza Horizon 6 media directory:" -ForegroundColor Green
+    Write-Host "  $mediaDir"
+    Write-Host ""
 }
 
 # Save original stock backup if not already backed up
 if (-not (Test-Path "$backupDir\wheeltunablesettingspc_stock.zip")) {
     Copy-Item $wtsPath "$backupDir\wheeltunablesettingspc_stock.zip" -Force
-    Write-Host "Saved original stock backup to: $backupDir\wheeltunablesettingspc_stock.zip" -ForegroundColor Gray
-}
-if ((Test-Path $impPath) -and -not (Test-Path "$backupDir\inputmappingprofiles_stock.zip")) {
-    Copy-Item $impPath "$backupDir\inputmappingprofiles_stock.zip" -Force
+    if (-not $AutoMode) {
+        Write-Host "Saved original stock backup to: $backupDir\wheeltunablesettingspc_stock.zip" -ForegroundColor Gray
+    }
 }
 
 # 2. Compile Forza's 4096-byte page-aligned zip patcher (0x1123 extra field TLV)
@@ -283,27 +292,22 @@ $logiEntry = $wtsEntries | Where-Object { $_.Name -ieq "ControllerFFB-0X046DC272
 $sc2Entry  = $wtsEntries | Where-Object { $_.Name -ieq "ControllerFFB-0X16D00D60.ini" } | Select-Object -First 1
 
 if (-not $logiEntry) {
-    Write-Host "ERROR: Could not find reference Direct Drive profile (0X046DC272.ini) in zip." -ForegroundColor Red
     exit 1
 }
 
 $baseDdTemplate = [System.Text.Encoding]::UTF8.GetString($logiEntry.UncompressedData)
 
-# Helper to build a clean DD INI for any VendorProduct & FriendlyName (preserving positive DynFFBScale = 1)
 function Build-CleanDdIni([string]$vendorProd, [string]$friendlyName, [string]$dynScale = "1") {
     $txt = $baseDdTemplate
     $txt = $txt -replace '(?m)^VendorProduct\s+.*$', "VendorProduct $vendorProd"
     $txt = $txt -replace '(?m)^FriendlyName\s+.*$', "FriendlyName $friendlyName"
     $txt = $txt -replace '(?m)^DynFFBScale\s+.*$', "DynFFBScale $dynScale"
     if ($vendorProd -eq "0000000000") {
-        # Default fallback shouldn't override DegreesOfRotation
         $txt = $txt -replace '(?m)^DegreesOfRotation\s+.*\r?\n', ''
     }
     return $txt
 }
 
-# Upgrade Default (0000000000.ini) so ANY unrecognized Direct Drive wheel (Simucube 3, Simagic, Asetek, VRS, Moza, Cammus) gets the clean DD physics!
-# Also upgrade Simucube 2 (0X16D00D60), Fanatec DD1/DD2 (0x0eb70006 / 0x0eb70007), and Moza (0X346E*) so none of them suffer from the molasses filter!
 $upgradedTargets = @{
     "ControllerFFB-0000000000.ini" = @{ VP = "0000000000"; Name = "Default"; Scale = "1" }
     "ControllerFFB-0X16D00D60.ini" = @{ VP = "0x16D00D60"; Name = "Simcube 2 Sport"; Scale = "1" }
@@ -316,11 +320,12 @@ foreach ($e in $wtsEntries) {
         $info = $upgradedTargets[$e.Name]
         $newTxt = Build-CleanDdIni $info.VP $info.Name $info.Scale
         [ForzaZipPatcher]::UpdateEntryText($e, $newTxt)
-        Write-Host "  Upgraded $($e.Name) ($($info.Name)) -> Clean Modern DD Physics" -ForegroundColor Green
+        if (-not $AutoMode) {
+            Write-Host "  Upgraded $($e.Name) ($($info.Name)) -> Clean Modern DD Physics" -ForegroundColor Green
+        }
     }
 }
 
-# Also explicitly add Simucube 3 Pro (0X16D00D66), Simucube 3 Sport (0X16D00D65), and Simucube 2 Pro (0X16D00D5F) if not present
 $explicitDdAdditions = @(
     @{ File = "ControllerFFB-0X16D00D5F.ini"; VP = "0x16D00D5F"; Name = "Simucube 2 Pro" },
     @{ File = "ControllerFFB-0X16D00D65.ini"; VP = "0x16D00D65"; Name = "Simucube 3 Sport" },
@@ -342,11 +347,46 @@ foreach ($add in $explicitDdAdditions) {
         [ForzaZipPatcher]::UpdateEntryText($newEntry, (Build-CleanDdIni $add.VP $add.Name "1"))
         $idx = $wtsEntries.IndexOf($sc2Entry)
         $wtsEntries.Insert($idx + 1, $newEntry)
-        Write-Host "  Added $($add.File) ($($add.Name)) -> Clean Modern DD Physics" -ForegroundColor Green
+        if (-not $AutoMode) {
+            Write-Host "  Added $($add.File) ($($add.Name)) -> Clean Modern DD Physics" -ForegroundColor Green
+        }
     }
 }
 
 [ForzaZipPatcher]::WriteForzaZip($wtsPath, $wtsEntries)
+
+if ($AutoMode) {
+    $stamp = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+    Add-Content -Path "$backupDir\patch_history.log" -Value "[$stamp] Auto-reapplied Universal Direct Drive FFB patch after Forza update."
+    exit 0
+}
+
 Write-Host ""
 Write-Host "Successfully patched wheeltunablesettingspc.zip (4096-byte page aligned)!" -ForegroundColor Cyan
+Write-Host ""
+
+# 4. Optional prompt to enable automatic re-patching after Forza Horizon 6 updates
+$ans = Read-Host "Would you like to automatically re-apply this patch whenever Forza Horizon 6 updates? (y/N)"
+if ($ans -match "^[Yy]") {
+    $savedScript = "$backupDir\AutoPatch_FH6_DD.ps1"
+    Copy-Item $PSCommandPath $savedScript -Force
+
+    $taskName = "FH6_Universal_DD_AutoPatcher"
+    $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$savedScript`" -AutoMode"
+    $CIMTriggerClass = Get-CimClass -ClassName MSFT_TaskEventTrigger -Namespace Root/Microsoft/Windows/TaskScheduler
+    $triggerAppX = New-CimInstance -CimClass $CIMTriggerClass -ClientOnly
+    $triggerAppX.Subscription = @"
+<QueryList><Query Id="0" Path="Microsoft-Windows-AppXDeploymentServer/Operational"><Select Path="Microsoft-Windows-AppXDeploymentServer/Operational">*[System[Provider[@Name='Microsoft-Windows-AppXDeployment-Server'] and (EventID=400 or EventID=613)]]</Select></Query></QueryList>
+"@
+    $triggerAppX.Enabled = $true
+    $triggerTime = New-ScheduledTaskTrigger -Daily -At "12:00PM"
+    $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 2)
+
+    Register-ScheduledTask -TaskName $taskName -Action $action -Trigger @($triggerAppX, $triggerTime) -Settings $settings -Description "Automatically re-applies Universal Direct Drive FFB physics patch after Forza Horizon 6 game updates." -Force | Out-Null
+    Write-Host "Enabled automatic update protection (Task: $taskName)!" -ForegroundColor Green
+} else {
+    Write-Host "Skipped auto-update task. (You can re-run Install_FH6_DirectDrive_Fix.bat anytime after a game update)." -ForegroundColor Gray
+}
+
+Write-Host ""
 Write-Host "Done! Restart Forza Horizon 6 to feel the updated Direct Drive physics." -ForegroundColor Green
