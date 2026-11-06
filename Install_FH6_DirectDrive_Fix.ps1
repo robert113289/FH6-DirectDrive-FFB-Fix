@@ -72,17 +72,32 @@ $logPath = "$backupDir\patch_history.log"
 New-Item -ItemType Directory -Path $backupDir -Force | Out-Null
 
 if ($Uninstall) {
+    $restoredAny = $false
     if (Test-Path "$backupDir\wheeltunablesettingspc_stock.zip") {
         Copy-Item "$backupDir\wheeltunablesettingspc_stock.zip" $wtsPath -Force
         Write-Host "Restored stock wheeltunablesettingspc.zip" -ForegroundColor Green
+        $restoredAny = $true
+    } else {
+        Write-Host "WARNING: Backup file not found at $backupDir\wheeltunablesettingspc_stock.zip" -ForegroundColor Yellow
     }
-    if (Test-Path "$backupDir\inputmappingprofiles_stock.zip") {
+
+    if ((Test-Path $impPath) -and (Test-Path "$backupDir\inputmappingprofiles_stock.zip")) {
         Copy-Item "$backupDir\inputmappingprofiles_stock.zip" $impPath -Force
         Write-Host "Restored stock inputmappingprofiles.zip" -ForegroundColor Green
+        $restoredAny = $true
     }
+
     Unregister-ScheduledTask -TaskName "FH6_Universal_DD_AutoPatcher" -Confirm:$false -ErrorAction SilentlyContinue
     Unregister-ScheduledTask -TaskName "FH6_Simucube3_AutoPatcher" -Confirm:$false -ErrorAction SilentlyContinue
-    Write-Host "Removed auto-update task and restored stock files." -ForegroundColor Cyan
+
+    $startupDir = [Environment]::GetFolderPath('Startup')
+    Remove-Item "$startupDir\FH6_*_AutoPatcher.lnk" -Force -ErrorAction SilentlyContinue
+
+    if ($restoredAny) {
+        $stamp = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+        Add-Content -Path $logPath -Value "[$stamp] Uninstalled Universal DD FFB patch and restored stock archives."
+        Write-Host "Successfully removed auto-update hooks and restored stock Forza Horizon 6 files." -ForegroundColor Cyan
+    }
     exit 0
 }
 
@@ -109,7 +124,8 @@ $hasSc3InWts = ([regex]::IsMatch($wtsText, "(?i)ControllerFFB-0X16D00D66\.ini"))
 $needsWtsPatch = $Force -or (-not $hasSc3InWts)
 
 $needsImpPatch = $Force
-if ((-not $needsImpPatch) -and (Test-Path $impPath)) {
+$isImpStock = $false
+if (Test-Path $impPath) {
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $zip = [System.IO.Compression.ZipFile]::OpenRead($impPath)
     try {
@@ -118,6 +134,9 @@ if ((-not $needsImpPatch) -and (Test-Path $impPath)) {
             $sr = New-Object System.IO.StreamReader($entry.Open())
             $xmlTxt = $sr.ReadToEnd()
             $sr.Close()
+            if ($xmlTxt.Contains('FFBDeviceVidPid="1"')) {
+                $isImpStock = $true
+            }
             if (-not $xmlTxt.Contains($activeWheel.vid_pid_hex)) {
                 $needsImpPatch = $true
             }
@@ -127,17 +146,18 @@ if ((-not $needsImpPatch) -and (Test-Path $impPath)) {
     }
 }
 
-# Self-healing stock backups: if an archive in the game folder is currently unpatched (e.g. fresh install or just updated by Xbox/Steam),
+# Self-healing stock backups: if an archive in the game folder is currently unpatched stock (fresh install or just updated by Xbox/Steam),
 # refresh the saved *_stock.zip backup BEFORE patching so Uninstall always restores the latest game version's stock archive!
 if (-not $hasSc3InWts) {
     Copy-Item $wtsPath "$backupDir\wheeltunablesettingspc_stock.zip" -Force
 }
-if ($needsImpPatch -and (Test-Path $impPath) -and (-not $Force)) {
+if ($isImpStock) {
     Copy-Item $impPath "$backupDir\inputmappingprofiles_stock.zip" -Force
 }
 
 # Check if Playground Games officially added ControllerFFB-0X16D00D66.ini in a new Forza update!
-if ($needsImpPatch -and $hasSc3InWts -and (-not $Force)) {
+if ($isImpStock -and $hasSc3InWts -and (-not $Force)) {
+    $needsWtsPatch = $false
     $stamp = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
     Add-Content -Path $logPath -Value "[$stamp] DETECTED OFFICIAL SIMUCUBE 3 PRO SUPPORT IN FORZA UPDATE! Leaving official ControllerFFB-0X16D00D66.ini untouched so you can test it."
     Add-Type -AssemblyName PresentationFramework
