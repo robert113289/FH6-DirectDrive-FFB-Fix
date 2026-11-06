@@ -385,10 +385,11 @@ public class ForzaZipPatcher {
 }
 
 function Build-CleanDdIni([string]$vendorProd, [string]$friendlyName, [string]$dynScale = "1") {
-    $txt = ($baseDdTemplate -replace "`r?`n", "`r`n").TrimEnd("`r", "`n")
+    $txt = $baseDdTemplate
     $txt = $txt -replace '(?m)^VendorProduct\s+.*$', "VendorProduct $vendorProd"
     $txt = $txt -replace '(?m)^FriendlyName\s+.*$', "FriendlyName $friendlyName"
     $txt = $txt -replace '(?m)^DynFFBScale\s+.*$', "DynFFBScale $dynScale"
+    $txt = ($txt -replace "`r?`n", "`r`n").TrimEnd("`r", "`n")
     return $txt
 }
 
