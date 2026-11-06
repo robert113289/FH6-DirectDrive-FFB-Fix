@@ -5,9 +5,25 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$scriptRoot = $PSScriptRoot
+$backupDir = "$env:USERPROFILE\Documents\FH6_DirectDrive_FFB_Backup"
+New-Item -ItemType Directory -Path $backupDir -Force | Out-Null
+
+# Support both running from an extracted folder AND running via 1-line PowerShell (irm ... | iex)
+$scriptRoot = if ($PSScriptRoot) { $PSScriptRoot } else { $backupDir }
 $configIniPath = Join-Path $scriptRoot "config\DirectDrive_Physics.ini"
 $targetWheelsPath = Join-Path $scriptRoot "config\Target_Wheels.json"
+
+if ((-not (Test-Path $configIniPath)) -or (-not (Test-Path $targetWheelsPath))) {
+    $cfgDir = Join-Path $backupDir "config"
+    New-Item -ItemType Directory -Path $cfgDir -Force | Out-Null
+    $rawBase = "https://raw.githubusercontent.com/robert113289/FH6-DirectDrive-FFB-Fix/main"
+    Invoke-WebRequest -UseBasicParsing -Uri "$rawBase/config/DirectDrive_Physics.ini" -OutFile "$cfgDir\DirectDrive_Physics.ini"
+    Invoke-WebRequest -UseBasicParsing -Uri "$rawBase/config/Target_Wheels.json" -OutFile "$cfgDir\Target_Wheels.json"
+    Invoke-WebRequest -UseBasicParsing -Uri "$rawBase/Install_FH6_DirectDrive_Fix.ps1" -OutFile "$backupDir\Install_FH6_DirectDrive_Fix.ps1"
+    $scriptRoot = $backupDir
+    $configIniPath = "$cfgDir\DirectDrive_Physics.ini"
+    $targetWheelsPath = "$cfgDir\Target_Wheels.json"
+}
 
 if (-not $AutoMode) {
     Write-Host "================================================================" -ForegroundColor Cyan
@@ -455,11 +471,18 @@ Write-Host ""
 Write-Host "Successfully patched Forza Horizon 6 archives (4096-byte page aligned)!" -ForegroundColor Cyan
 Write-Host ""
 
-# 7. Optional prompt to enable automatic re-patching after Forza Horizon 6 updates
+# 7. Optional prompt to enable automatic re-patching after Forza Horizon 6 updates (Xbox App & Steam)
 $ans = Read-Host "Would you like to automatically re-apply this patch whenever Forza Horizon 6 updates? (y/N)"
 if ($ans -match "^[Yy]") {
+    # Persist script and config/ into Documents\FH6_DirectDrive_FFB_Backup so user can safely delete their Downloads folder
+    $savedScript = "$backupDir\Install_FH6_DirectDrive_Fix.ps1"
+    if ($scriptRoot -ne $backupDir) {
+        Copy-Item (Join-Path $scriptRoot "Install_FH6_DirectDrive_Fix.ps1") $savedScript -Force
+        Copy-Item (Join-Path $scriptRoot "config") "$backupDir\config" -Recurse -Force
+    }
+
     $taskName = "FH6_Universal_DD_AutoPatcher"
-    $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$PSCommandPath`" -AutoMode"
+    $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$savedScript`" -AutoMode"
     $CIMTriggerClass = Get-CimClass -ClassName MSFT_TaskEventTrigger -Namespace Root/Microsoft/Windows/TaskScheduler
     $triggerAppX = New-CimInstance -CimClass $CIMTriggerClass -ClientOnly
     $triggerAppX.Subscription = @"
@@ -470,7 +493,17 @@ if ($ans -match "^[Yy]") {
     $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 2)
 
     Register-ScheduledTask -TaskName $taskName -Action $action -Trigger @($triggerAppX, $triggerTime) -Settings $settings -Description "Automatically re-applies Universal Direct Drive FFB physics & input mapping patch after Forza Horizon 6 game updates." -Force | Out-Null
-    Write-Host "Enabled automatic update protection (Task: $taskName)!" -ForegroundColor Green
+
+    # Also add a silent Windows Login check in Startup folder so Steam updates are caught automatically at login too
+    $startupDir = [Environment]::GetFolderPath('Startup')
+    $wsh = New-Object -ComObject WScript.Shell
+    $lnk = $wsh.CreateShortcut("$startupDir\FH6_Universal_DD_AutoPatcher.lnk")
+    $lnk.TargetPath = "powershell.exe"
+    $lnk.Arguments = "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$savedScript`" -AutoMode"
+    $lnk.WindowStyle = 7
+    $lnk.Save()
+
+    Write-Host "Enabled automatic update protection for Xbox App & Steam!" -ForegroundColor Green
 }
 
 Write-Host ""

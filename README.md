@@ -1,10 +1,19 @@
 # Forza Horizon 6 — Universal Direct Drive FFB Physics Fix
 
+[![Download ZIP](https://img.shields.io/badge/%E2%AC%87%EF%B8%8F_Download_Installer-(.ZIP)-2ea44f?style=for-the-badge)](https://github.com/robert113289/FH6-DirectDrive-FFB-Fix/archive/refs/heads/main.zip)
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Platform: PC (Windows 10/11)](https://img.shields.io/badge/Platform-Windows%2010%2F11%20(Xbox%20App%20%26%20Steam)-0078D6.svg)](#5-how-to-install--uninstall)
 [![Wheelbases: All Direct Drive](https://img.shields.io/badge/Wheelbases-Simucube%20%7C%20Fanatec%20%7C%20Simagic%20%7C%20Asetek%20%7C%20VRS%20%7C%20Moza-success.svg)](#1-why-direct-drive-wheels-feel-bad-out-of-the-box-in-forza-horizon-6)
 
 Works for **all Direct Drive wheelbases** (Simucube 2 & 3, Fanatec DD1/DD2/CSL DD, Simagic, Asetek, VRS, Moza, Cammus, Conspit) and **multi-USB pedal setups** across **Xbox App / Microsoft Store** and **Steam**—with **no vJoy, HidHide, or EmuWheel required**.
+
+> **Quick Install (No Git Required):**
+> - **Option 1 (Download & Double-Click):** [**Click here to download the `.ZIP`**](https://github.com/robert113289/FH6-DirectDrive-FFB-Fix/archive/refs/heads/main.zip), extract the folder anywhere, and double-click **`Install_FH6_DirectDrive_Fix.bat`**.
+> - **Option 2 (1-Line PowerShell Command):** Right-click your Windows Start button -> click **Terminal** (or **PowerShell**), paste this command, and press **Enter**:
+>   ```powershell
+>   irm https://raw.githubusercontent.com/robert113289/FH6-DirectDrive-FFB-Fix/main/Install_FH6_DirectDrive_Fix.ps1 | iex
+>   ```
 
 ---
 
@@ -89,11 +98,11 @@ To pair with this physics curve, set your wheelbase software (**Simucube Tuner**
 
 This repository carries **zero proprietary game files**—it unpacks your own local `wheeltunablesettingspc.zip` and `inputmappingprofiles.zip` directly from your Forza Horizon 6 installation, injects the plain-text [`config/DirectDrive_Physics.ini`](config/DirectDrive_Physics.ini) and [`config/Target_Wheels.json`](config/Target_Wheels.json) settings in memory, and repacks the archives in place.
 
-1. Click **Code -> Download ZIP** at the top of this GitHub page and extract the folder (or run `git clone https://github.com/robert113289/FH6-DirectDrive-FFB-Fix.git`).
+1. [**Click here to download the `.ZIP` directly**](https://github.com/robert113289/FH6-DirectDrive-FFB-Fix/archive/refs/heads/main.zip) and extract the folder anywhere on your PC.
 2. Double-click **`Install_FH6_DirectDrive_Fix.bat`**:
    - Automatically finds your Forza Horizon 6 installation, saves a self-updating backup of your stock `.zip` files to `Documents\FH6_DirectDrive_FFB_Backup\`, and patches your archives.
-   - Asks at the end: **`Would you like to automatically re-apply this patch whenever Forza Horizon 6 updates? (y/N)`** — if you type `y`, it registers a lightweight Windows Task Scheduler trigger so future Forza game updates never wipe out your FFB fix.
-3. **To Revert to Stock (and remove the auto-update task):** Double-click **`Uninstall_Restore_Stock.bat`**.
+   - Asks at the end: **`Would you like to automatically re-apply this patch whenever Forza Horizon 6 updates? (y/N)`** — if you type `y`, it copies the patcher to `Documents\FH6_DirectDrive_FFB_Backup\` (so you can safely delete your downloaded folder) and registers automatic checks for both **Xbox App** (instant update event hook) and **Steam** (login + daily check).
+3. **To Revert to Stock (and remove the auto-update task):** Double-click **`Uninstall_Restore_Stock.bat`** (or run `irm https://raw.githubusercontent.com/robert113289/FH6-DirectDrive-FFB-Fix/main/Install_FH6_DirectDrive_Fix.ps1 | iex` with `-Uninstall`).
 
 ---
 
