@@ -80,19 +80,12 @@ To pair with this physics curve, set your wheelbase software (**Simucube Tuner**
 
 ---
 
-## 5. How to Install (2 Options)
+## 5. How to Install / Uninstall
 
-### Option A — Manual Drag & Drop (No Scripts Required)
-If you prefer not to run any PowerShell/Batch scripts:
-1. Back up your original `wheeltunablesettingspc.zip` from your Forza Horizon 6 folder:
-   - **Xbox App / MS Store:** `C:\XboxGames\Forza Horizon 6\Content\media\wheeltunablesettingspc.zip`
-   - **Steam:** `...\steamapps\common\ForzaHorizon6\media\wheeltunablesettingspc.zip`
-2. Download **[`Prebuilt_Drop_In/wheeltunablesettingspc.zip`](Prebuilt_Drop_In/wheeltunablesettingspc.zip)** from this repo and drop it into your `media` folder, replacing the original file.
-   *(Note: If you use Option A, you will need to copy the file back in after a Forza Horizon 6 game update).*
+This patcher carries **zero proprietary game files**—it reads your own local `wheeltunablesettingspc.zip` and `inputmappingprofiles.zip` directly from your Forza Horizon 6 installation, injects the plain-text [`config/DirectDrive_Physics.ini`](config/DirectDrive_Physics.ini) and [`config/Target_Wheels.json`](config/Target_Wheels.json) entries in memory, and repacks the archives with Forza's required 4096-byte page alignment.
 
-### Option B — 1-Click Installer (With Optional Auto-Update Protection)
-1. Download and extract **[`FH6_Universal_DirectDrive_FFB_Fix.zip`](FH6_Universal_DirectDrive_FFB_Fix.zip)** (or clone this repo).
+1. Click **Code -> Download ZIP** at the top of this GitHub page and extract the folder (or run `git clone https://github.com/robert113289/FH6-DirectDrive-FFB-Fix.git`).
 2. Double-click **`Install_FH6_DirectDrive_Fix.bat`**:
-   - Automatically finds your Forza Horizon 6 installation, backs up your stock `wheeltunablesettingspc.zip` to `Documents\FH6_DirectDrive_FFB_Backup\`, and patches your `.zip` directly.
+   - Automatically finds your Forza Horizon 6 installation, saves an untouched backup of your stock `.zip` files to `Documents\FH6_DirectDrive_FFB_Backup\`, and unpacks -> updates -> repacks your archives in place.
    - Asks at the end: **`Would you like to automatically re-apply this patch whenever Forza Horizon 6 updates? (y/N)`** — if you type `y`, it registers a lightweight Windows Task Scheduler trigger so future Forza game updates never wipe out your FFB fix.
 3. **To Revert to Stock (and remove the auto-update task):** Double-click **`Uninstall_Restore_Stock.bat`**.
