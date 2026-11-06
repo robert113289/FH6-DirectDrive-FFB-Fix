@@ -1,9 +1,13 @@
 param(
     [switch]$Uninstall,
-    [switch]$AutoMode
+    [switch]$AutoMode,
+    [switch]$Force
 )
 
 $ErrorActionPreference = 'Stop'
+$scriptRoot = $PSScriptRoot
+$configIniPath = Join-Path $scriptRoot "config\DirectDrive_Physics.ini"
+$targetWheelsPath = Join-Path $scriptRoot "config\Target_Wheels.json"
 
 if (-not $AutoMode) {
     Write-Host "================================================================" -ForegroundColor Cyan
@@ -62,7 +66,9 @@ if (-not $mediaDir -or -not (Test-Path "$mediaDir\wheeltunablesettingspc.zip")) 
 }
 
 $wtsPath = "$mediaDir\wheeltunablesettingspc.zip"
+$impPath = "$mediaDir\inputmappingprofiles.zip"
 $backupDir = "$env:USERPROFILE\Documents\FH6_DirectDrive_FFB_Backup"
+$logPath = "$backupDir\patch_history.log"
 New-Item -ItemType Directory -Path $backupDir -Force | Out-Null
 
 if ($Uninstall) {
@@ -70,35 +76,93 @@ if ($Uninstall) {
         Copy-Item "$backupDir\wheeltunablesettingspc_stock.zip" $wtsPath -Force
         Write-Host "Restored stock wheeltunablesettingspc.zip" -ForegroundColor Green
     }
+    if (Test-Path "$backupDir\inputmappingprofiles_stock.zip") {
+        Copy-Item "$backupDir\inputmappingprofiles_stock.zip" $impPath -Force
+        Write-Host "Restored stock inputmappingprofiles.zip" -ForegroundColor Green
+    }
     Unregister-ScheduledTask -TaskName "FH6_Universal_DD_AutoPatcher" -Confirm:$false -ErrorAction SilentlyContinue
-    Write-Host "Removed auto-update task (if registered) and restored stock files." -ForegroundColor Cyan
+    Unregister-ScheduledTask -TaskName "FH6_Simucube3_AutoPatcher" -Confirm:$false -ErrorAction SilentlyContinue
+    Write-Host "Removed auto-update task and restored stock files." -ForegroundColor Cyan
     exit 0
 }
 
-# In AutoMode (triggered by Windows after a game update), check in ~30ms if already patched
-if ($AutoMode) {
-    $wtsBytes = [System.IO.File]::ReadAllBytes($wtsPath)
-    $wtsText = [System.Text.Encoding]::ASCII.GetString($wtsBytes)
-    if ($wtsText.Contains("ControllerFFB-0X16D00D66.ini")) {
-        exit 0
+# 2. Load config/Target_Wheels.json and config/DirectDrive_Physics.ini
+$targetsConfig = Get-Content $targetWheelsPath -Raw | ConvertFrom-Json
+$baseDdTemplate = Get-Content $configIniPath -Raw
+
+# Auto-detect connected Direct Drive wheelbase USB VID/PID for inputmappingprofiles.zip (defaults to Simucube 3 Pro 0x16d00d66)
+$activeWheel = $targetsConfig.default_input_mapping_wheel
+try {
+    $presentPnp = Get-PnpDevice -PresentOnly -ErrorAction SilentlyContinue | Select-Object -ExpandProperty InstanceId
+    foreach ($wb in $targetsConfig.auto_detect_wheelbases) {
+        if ($presentPnp | Where-Object { $_ -match $wb.pnp_match }) {
+            $activeWheel = $wb
+            break
+        }
     }
+} catch {}
+
+# 3. Fast check (~30ms): see if wheeltunablesettingspc.zip and inputmappingprofiles.zip are already patched
+$wtsBytes = [System.IO.File]::ReadAllBytes($wtsPath)
+$wtsText = [System.Text.Encoding]::ASCII.GetString($wtsBytes)
+$hasSc3InWts = ([regex]::IsMatch($wtsText, "(?i)ControllerFFB-0X16D00D66\.ini"))
+$needsWtsPatch = $Force -or (-not $hasSc3InWts)
+
+$needsImpPatch = $Force
+if ((-not $needsImpPatch) -and (Test-Path $impPath)) {
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $zip = [System.IO.Compression.ZipFile]::OpenRead($impPath)
+    try {
+        $entry = $zip.GetEntry("CustomRawGameControllerProfile1.xml")
+        if ($entry) {
+            $sr = New-Object System.IO.StreamReader($entry.Open())
+            $xmlTxt = $sr.ReadToEnd()
+            $sr.Close()
+            if (-not $xmlTxt.Contains($activeWheel.vid_pid_hex)) {
+                $needsImpPatch = $true
+            }
+        }
+    } finally {
+        $zip.Dispose()
+    }
+}
+
+# Self-healing stock backups: if an archive in the game folder is currently unpatched (e.g. fresh install or just updated by Xbox/Steam),
+# refresh the saved *_stock.zip backup BEFORE patching so Uninstall always restores the latest game version's stock archive!
+if (-not $hasSc3InWts) {
+    Copy-Item $wtsPath "$backupDir\wheeltunablesettingspc_stock.zip" -Force
+}
+if ($needsImpPatch -and (Test-Path $impPath) -and (-not $Force)) {
+    Copy-Item $impPath "$backupDir\inputmappingprofiles_stock.zip" -Force
+}
+
+# Check if Playground Games officially added ControllerFFB-0X16D00D66.ini in a new Forza update!
+if ($needsImpPatch -and $hasSc3InWts -and (-not $Force)) {
+    $stamp = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+    Add-Content -Path $logPath -Value "[$stamp] DETECTED OFFICIAL SIMUCUBE 3 PRO SUPPORT IN FORZA UPDATE! Leaving official ControllerFFB-0X16D00D66.ini untouched so you can test it."
+    Add-Type -AssemblyName PresentationFramework
+    [System.Windows.MessageBox]::Show(
+        "The latest Forza Horizon 6 update officially added a Simucube 3 Pro profile (ControllerFFB-0X16D00D66.ini)!`n`nThe auto-patcher left Playground Games' new official SC3 profile untouched so you can try it out.",
+        "Forza Horizon 6 - Official Simucube 3 Pro Support Added!",
+        "OK",
+        "Information"
+    ) | Out-Null
+}
+
+if ((-not $needsWtsPatch) -and (-not $needsImpPatch)) {
+    if (-not $AutoMode) {
+        Write-Host "Forza Horizon 6 archives are already patched and up to date for $($activeWheel.name) ($($activeWheel.vid_pid_hex))." -ForegroundColor Green
+    }
+    exit 0
 }
 
 if (-not $AutoMode) {
-    Write-Host "Found Forza Horizon 6 media directory:" -ForegroundColor Green
-    Write-Host "  $mediaDir"
+    Write-Host "Found Forza Horizon 6 media directory: $mediaDir" -ForegroundColor Green
+    Write-Host "Target Primary FFB Wheelbase: $($activeWheel.name) ($($activeWheel.vid_pid_hex))" -ForegroundColor Cyan
     Write-Host ""
 }
 
-# Save original stock backup if not already backed up
-if (-not (Test-Path "$backupDir\wheeltunablesettingspc_stock.zip")) {
-    Copy-Item $wtsPath "$backupDir\wheeltunablesettingspc_stock.zip" -Force
-    if (-not $AutoMode) {
-        Write-Host "Saved original stock backup to: $backupDir\wheeltunablesettingspc_stock.zip" -ForegroundColor Gray
-    }
-}
-
-# 2. Compile Forza's 4096-byte page-aligned zip patcher (0x1123 extra field TLV)
+# 4. Compile Forza's 4096-byte page-aligned zip patcher (0x1123 extra field TLV)
 Add-Type -ReferencedAssemblies "System.IO.Compression" -TypeDefinition @"
 using System;
 using System.Collections.Generic;
@@ -286,93 +350,96 @@ public class ForzaZipPatcher {
 }
 "@
 
-# 3. Read wheeltunablesettingspc.zip and upgrade Default + Direct Drive profiles to the clean Modern DD physics table
-$wtsEntries = [ForzaZipPatcher]::ReadForzaZip($wtsPath)
-$logiEntry = $wtsEntries | Where-Object { $_.Name -ieq "ControllerFFB-0X046DC272.ini" } | Select-Object -First 1
-$sc2Entry  = $wtsEntries | Where-Object { $_.Name -ieq "ControllerFFB-0X16D00D60.ini" } | Select-Object -First 1
-
-if (-not $logiEntry) {
-    exit 1
-}
-
-$baseDdTemplate = [System.Text.Encoding]::UTF8.GetString($logiEntry.UncompressedData)
-
-function Build-CleanDdIni([string]$vendorProd, [string]$friendlyName, [string]$dynScale = "1") {
-    $txt = $baseDdTemplate
+function Build-CleanDdIni([string]$vendorProd, [string]$friendlyName, [string]$dynScale = "1", [bool]$omitDor = $false) {
+    $txt = $baseDdTemplate -replace "`r?`n", "`r`n"
     $txt = $txt -replace '(?m)^VendorProduct\s+.*$', "VendorProduct $vendorProd"
     $txt = $txt -replace '(?m)^FriendlyName\s+.*$', "FriendlyName $friendlyName"
     $txt = $txt -replace '(?m)^DynFFBScale\s+.*$', "DynFFBScale $dynScale"
-    if ($vendorProd -eq "0000000000") {
+    if ($omitDor) {
         $txt = $txt -replace '(?m)^DegreesOfRotation\s+.*\r?\n', ''
     }
     return $txt
 }
 
-$upgradedTargets = @{
-    "ControllerFFB-0000000000.ini" = @{ VP = "0000000000"; Name = "Default"; Scale = "1" }
-    "ControllerFFB-0X16D00D60.ini" = @{ VP = "0x16D00D60"; Name = "Simcube 2 Sport"; Scale = "1" }
-    "ControllerFFB-0x0eb70006.ini" = @{ VP = "0x0eb70006"; Name = "FanatecDD1"; Scale = "1" }
-    "ControllerFFB-0x0eb70007.ini" = @{ VP = "0x0eb70007"; Name = "FanatecDD2"; Scale = "1" }
-}
-
-foreach ($e in $wtsEntries) {
-    if ($upgradedTargets.ContainsKey($e.Name)) {
-        $info = $upgradedTargets[$e.Name]
-        $newTxt = Build-CleanDdIni $info.VP $info.Name $info.Scale
-        [ForzaZipPatcher]::UpdateEntryText($e, $newTxt)
-        if (-not $AutoMode) {
-            Write-Host "  Upgraded $($e.Name) ($($info.Name)) -> Clean Modern DD Physics" -ForegroundColor Green
+# 5. Patch inputmappingprofiles.zip (ensures multi-USB rigs like Simucube 3 + Fanatec Pedals route FFB to the wheelbase)
+if ($needsImpPatch -and (Test-Path $impPath)) {
+    $impEntries = [ForzaZipPatcher]::ReadForzaZip($impPath)
+    foreach ($e in $impEntries) {
+        if ($e.Name -match "^CustomRawGameControllerProfile[1-5]\.xml$") {
+            $txt = [System.Text.Encoding]::UTF8.GetString($e.UncompressedData)
+            $txt = $txt -replace 'PrimaryDeviceVidPid="[^"]+"', "PrimaryDeviceVidPid=`"$($activeWheel.vid_pid_hex)`""
+            $txt = $txt -replace 'FFBDeviceVidPid="[^"]+"', "FFBDeviceVidPid=`"$($activeWheel.vid_pid_hex)`""
+            [ForzaZipPatcher]::UpdateEntryText($e, $txt)
         }
+        elseif ($e.Name -match "^CustomWheelMappingProfile[1-5]\.xml$") {
+            $txt = [System.Text.Encoding]::UTF8.GetString($e.UncompressedData)
+            $txt = $txt -replace 'WheelVidPid="[^"]+"', "WheelVidPid=`"$($activeWheel.vid_pid_dec)`""
+            [ForzaZipPatcher]::UpdateEntryText($e, $txt)
+        }
+    }
+    [ForzaZipPatcher]::WriteForzaZip($impPath, $impEntries)
+    if (-not $AutoMode) {
+        Write-Host "  Patched inputmappingprofiles.zip -> FFBDeviceVidPid=$($activeWheel.vid_pid_hex)" -ForegroundColor Green
     }
 }
 
-$explicitDdAdditions = @(
-    @{ File = "ControllerFFB-0X16D00D5F.ini"; VP = "0x16D00D5F"; Name = "Simucube 2 Pro" },
-    @{ File = "ControllerFFB-0X16D00D65.ini"; VP = "0x16D00D65"; Name = "Simucube 3 Sport" },
-    @{ File = "ControllerFFB-0X16D00D66.ini"; VP = "0x16D00D66"; Name = "Simucube 3 Pro" }
-)
+# 6. Patch wheeltunablesettingspc.zip from config/DirectDrive_Physics.ini & config/Target_Wheels.json
+if ($needsWtsPatch) {
+    $wtsEntries = [ForzaZipPatcher]::ReadForzaZip($wtsPath)
+    $sc2Entry = $wtsEntries | Where-Object { $_.Name -ieq "ControllerFFB-0X16D00D60.ini" } | Select-Object -First 1
 
-foreach ($add in $explicitDdAdditions) {
-    $existing = $wtsEntries | Where-Object { $_.Name -ieq $add.File } | Select-Object -First 1
-    if ($existing) {
-        [ForzaZipPatcher]::UpdateEntryText($existing, (Build-CleanDdIni $add.VP $add.Name "1"))
-    } elseif ($sc2Entry) {
-        $newEntry = New-Object ForzaZipPatcher+RawEntry
-        $newEntry.Name = $add.File
-        $newEntry.VerMade = $sc2Entry.VerMade
-        $newEntry.VerNeed = $sc2Entry.VerNeed
-        $newEntry.Flags = $sc2Entry.Flags
-        $newEntry.Method = $sc2Entry.Method
-        $newEntry.DosTime = $sc2Entry.DosTime
-        [ForzaZipPatcher]::UpdateEntryText($newEntry, (Build-CleanDdIni $add.VP $add.Name "1"))
-        $idx = $wtsEntries.IndexOf($sc2Entry)
-        $wtsEntries.Insert($idx + 1, $newEntry)
-        if (-not $AutoMode) {
-            Write-Host "  Added $($add.File) ($($add.Name)) -> Clean Modern DD Physics" -ForegroundColor Green
+    foreach ($upg in $targetsConfig.upgrade_existing_ini_files) {
+        $e = $wtsEntries | Where-Object { $_.Name -ieq $upg.file } | Select-Object -First 1
+        if ($e) {
+            $newTxt = Build-CleanDdIni $upg.vendor_product $upg.friendly_name $upg.dyn_ffb_scale ([bool]$upg.omit_dor)
+            [ForzaZipPatcher]::UpdateEntryText($e, $newTxt)
+            if (-not $AutoMode) {
+                Write-Host "  Upgraded $($e.Name) ($($upg.friendly_name)) -> Clean Modern DD Physics" -ForegroundColor Green
+            }
         }
     }
+
+    foreach ($add in $targetsConfig.inject_new_ini_files) {
+        $existing = $wtsEntries | Where-Object { $_.Name -ieq $add.file } | Select-Object -First 1
+        $newTxt = Build-CleanDdIni $add.vendor_product $add.friendly_name $add.dyn_ffb_scale $false
+        if ($existing) {
+            [ForzaZipPatcher]::UpdateEntryText($existing, $newTxt)
+        } elseif ($sc2Entry) {
+            $newEntry = New-Object ForzaZipPatcher+RawEntry
+            $newEntry.Name = $add.file
+            $newEntry.VerMade = $sc2Entry.VerMade
+            $newEntry.VerNeed = $sc2Entry.VerNeed
+            $newEntry.Flags = $sc2Entry.Flags
+            $newEntry.Method = $sc2Entry.Method
+            $newEntry.DosTime = $sc2Entry.DosTime
+            [ForzaZipPatcher]::UpdateEntryText($newEntry, $newTxt)
+            $idx = $wtsEntries.IndexOf($sc2Entry)
+            $wtsEntries.Insert($idx + 1, $newEntry)
+            if (-not $AutoMode) {
+                Write-Host "  Added $($add.file) ($($add.friendly_name)) -> Clean Modern DD Physics" -ForegroundColor Green
+            }
+        }
+    }
+
+    [ForzaZipPatcher]::WriteForzaZip($wtsPath, $wtsEntries)
 }
 
-[ForzaZipPatcher]::WriteForzaZip($wtsPath, $wtsEntries)
+$stamp = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+Add-Content -Path $logPath -Value "[$stamp] Applied Universal DD FFB patch (WTS=$needsWtsPatch, IMP=$needsImpPatch, Wheel=$($activeWheel.name))"
 
 if ($AutoMode) {
-    $stamp = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
-    Add-Content -Path "$backupDir\patch_history.log" -Value "[$stamp] Auto-reapplied Universal Direct Drive FFB patch after Forza update."
     exit 0
 }
 
 Write-Host ""
-Write-Host "Successfully patched wheeltunablesettingspc.zip (4096-byte page aligned)!" -ForegroundColor Cyan
+Write-Host "Successfully patched Forza Horizon 6 archives (4096-byte page aligned)!" -ForegroundColor Cyan
 Write-Host ""
 
-# 4. Optional prompt to enable automatic re-patching after Forza Horizon 6 updates
+# 7. Optional prompt to enable automatic re-patching after Forza Horizon 6 updates
 $ans = Read-Host "Would you like to automatically re-apply this patch whenever Forza Horizon 6 updates? (y/N)"
 if ($ans -match "^[Yy]") {
-    $savedScript = "$backupDir\AutoPatch_FH6_DD.ps1"
-    Copy-Item $PSCommandPath $savedScript -Force
-
     $taskName = "FH6_Universal_DD_AutoPatcher"
-    $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$savedScript`" -AutoMode"
+    $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$PSCommandPath`" -AutoMode"
     $CIMTriggerClass = Get-CimClass -ClassName MSFT_TaskEventTrigger -Namespace Root/Microsoft/Windows/TaskScheduler
     $triggerAppX = New-CimInstance -CimClass $CIMTriggerClass -ClientOnly
     $triggerAppX.Subscription = @"
@@ -382,10 +449,8 @@ if ($ans -match "^[Yy]") {
     $triggerTime = New-ScheduledTaskTrigger -Daily -At "12:00PM"
     $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 2)
 
-    Register-ScheduledTask -TaskName $taskName -Action $action -Trigger @($triggerAppX, $triggerTime) -Settings $settings -Description "Automatically re-applies Universal Direct Drive FFB physics patch after Forza Horizon 6 game updates." -Force | Out-Null
+    Register-ScheduledTask -TaskName $taskName -Action $action -Trigger @($triggerAppX, $triggerTime) -Settings $settings -Description "Automatically re-applies Universal Direct Drive FFB physics & input mapping patch after Forza Horizon 6 game updates." -Force | Out-Null
     Write-Host "Enabled automatic update protection (Task: $taskName)!" -ForegroundColor Green
-} else {
-    Write-Host "Skipped auto-update task. (You can re-run Install_FH6_DirectDrive_Fix.bat anytime after a game update)." -ForegroundColor Gray
 }
 
 Write-Host ""
