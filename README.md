@@ -1,5 +1,9 @@
 # Forza Horizon 6 — Universal Direct Drive FFB Physics Fix
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Platform: PC (Windows 10/11)](https://img.shields.io/badge/Platform-Windows%2010%2F11%20(Xbox%20App%20%26%20Steam)-0078D6.svg)](#5-how-to-install-2-options)
+[![Wheelbases: All Direct Drive](https://img.shields.io/badge/Wheelbases-Simucube%20%7C%20Fanatec%20%7C%20Simagic%20%7C%20Asetek%20%7C%20VRS%20%7C%20Moza-success.svg)](#1-why-direct-drive-wheels-feel-bad-out-of-the-box-in-forza-horizon-6)
+
 Works for **all Direct Drive wheelbases** (Simucube 2 & 3, Fanatec DD1/DD2/CSL DD, Simagic, Asetek, VRS, Moza, Cammus, Conspit) across **Xbox App / Microsoft Store** and **Steam**.
 
 ---
