@@ -78,14 +78,12 @@ if (-not $mediaDir -or -not (Test-Path "$mediaDir\wheeltunablesettingspc.zip")) 
     if (-not $AutoMode) {
         Write-Host "ERROR: Could not find wheeltunablesettingspc.zip. Exiting." -ForegroundColor Red
     }
-    exit 1
+    return
 }
 
 $wtsPath = "$mediaDir\wheeltunablesettingspc.zip"
 $impPath = "$mediaDir\inputmappingprofiles.zip"
-$backupDir = "$env:USERPROFILE\Documents\FH6_DirectDrive_FFB_Backup"
 $logPath = "$backupDir\patch_history.log"
-New-Item -ItemType Directory -Path $backupDir -Force | Out-Null
 
 if ($Uninstall) {
     $restoredAny = $false
@@ -114,7 +112,7 @@ if ($Uninstall) {
         Add-Content -Path $logPath -Value "[$stamp] Uninstalled Universal DD FFB patch and restored stock archives."
         Write-Host "Successfully removed auto-update hooks and restored stock Forza Horizon 6 files." -ForegroundColor Cyan
     }
-    exit 0
+    return
 }
 
 # 2. Load config/Target_Wheels.json and config/DirectDrive_Physics.ini
@@ -137,9 +135,10 @@ try {
 $wtsBytes = [System.IO.File]::ReadAllBytes($wtsPath)
 $wtsText = [System.Text.Encoding]::ASCII.GetString($wtsBytes)
 $hasSc3InWts = ([regex]::IsMatch($wtsText, "(?i)ControllerFFB-0X16D00D66\.ini"))
-$needsWtsPatch = $Force -or (-not $hasSc3InWts)
+# When run interactively (-not $AutoMode), always apply the latest config; in -AutoMode, only patch when needed
+$needsWtsPatch = $Force -or (-not $AutoMode) -or (-not $hasSc3InWts)
 
-$needsImpPatch = $Force
+$needsImpPatch = $Force -or (-not $AutoMode)
 $isImpStock = $false
 if (Test-Path $impPath) {
     Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -186,10 +185,7 @@ if ($isImpStock -and $hasSc3InWts -and (-not $Force)) {
 }
 
 if ((-not $needsWtsPatch) -and (-not $needsImpPatch)) {
-    if (-not $AutoMode) {
-        Write-Host "Forza Horizon 6 archives are already patched and up to date for $($activeWheel.name) ($($activeWheel.vid_pid_hex))." -ForegroundColor Green
-    }
-    exit 0
+    return
 }
 
 if (-not $AutoMode) {
@@ -199,6 +195,7 @@ if (-not $AutoMode) {
 }
 
 # 4. Compile Forza's 4096-byte page-aligned zip patcher (0x1123 extra field TLV)
+if (-not ('ForzaZipPatcher' -as [type])) {
 Add-Type -ReferencedAssemblies "System.IO.Compression" -TypeDefinition @"
 using System;
 using System.Collections.Generic;
@@ -385,6 +382,7 @@ public class ForzaZipPatcher {
     }
 }
 "@
+}
 
 function Build-CleanDdIni([string]$vendorProd, [string]$friendlyName, [string]$dynScale = "1", [bool]$omitDor = $false) {
     $txt = $baseDdTemplate -replace "`r?`n", "`r`n"
@@ -464,7 +462,7 @@ $stamp = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
 Add-Content -Path $logPath -Value "[$stamp] Applied Universal DD FFB patch (WTS=$needsWtsPatch, IMP=$needsImpPatch, Wheel=$($activeWheel.name))"
 
 if ($AutoMode) {
-    exit 0
+    return
 }
 
 Write-Host ""
