@@ -2,28 +2,19 @@
   "default_input_mapping_wheel": {
     "vid_pid_hex": "0x16d00d66",
     "vid_pid_dec": "382733670",
+    "ini_file": "ControllerFFB-0X16D00D66.ini",
+    "vendor_product": "0x16D00D66",
     "name": "Simucube 3 Pro"
   },
   "auto_detect_wheelbases": [
-    { "pnp_match": "VID_16D0&PID_0D66", "vid_pid_hex": "0x16d00d66", "vid_pid_dec": "382733670", "name": "Simucube 3 Pro" },
-    { "pnp_match": "VID_16D0&PID_0D65", "vid_pid_hex": "0x16d00d65", "vid_pid_dec": "382733669", "name": "Simucube 3 Sport" },
-    { "pnp_match": "VID_16D0&PID_0D60", "vid_pid_hex": "0x16d00d60", "vid_pid_dec": "382733664", "name": "Simucube 2 Sport" },
-    { "pnp_match": "VID_16D0&PID_0D5F", "vid_pid_hex": "0x16d00d5f", "vid_pid_dec": "382733663", "name": "Simucube 2 Pro" },
-    { "pnp_match": "VID_0EB7&PID_0006", "vid_pid_hex": "0x0eb70006", "vid_pid_dec": "246874118", "name": "Fanatec DD1" },
-    { "pnp_match": "VID_0EB7&PID_0007", "vid_pid_hex": "0x0eb70007", "vid_pid_dec": "246874119", "name": "Fanatec DD2" },
-    { "pnp_match": "VID_0483&PID_0522", "vid_pid_hex": "0x04830522", "vid_pid_dec": "75695394",  "name": "Simagic Alpha" },
-    { "pnp_match": "VID_2433&PID_F300", "vid_pid_hex": "0x2433f300", "vid_pid_dec": "607384320", "name": "Asetek Invicta" },
-    { "pnp_match": "VID_2433&PID_F301", "vid_pid_hex": "0x2433f301", "vid_pid_dec": "607384321", "name": "Asetek Forte" }
-  ],
-  "upgrade_existing_ini_files": [
-    { "file": "ControllerFFB-0000000000.ini", "vendor_product": "0000000000", "friendly_name": "Default",         "dyn_ffb_scale": "1", "omit_dor": true },
-    { "file": "ControllerFFB-0X16D00D60.ini", "vendor_product": "0x16D00D60", "friendly_name": "Simcube 2 Sport", "dyn_ffb_scale": "1", "omit_dor": false },
-    { "file": "ControllerFFB-0x0eb70006.ini", "vendor_product": "0x0eb70006", "friendly_name": "FanatecDD1",      "dyn_ffb_scale": "1", "omit_dor": false },
-    { "file": "ControllerFFB-0x0eb70007.ini", "vendor_product": "0x0eb70007", "friendly_name": "FanatecDD2",      "dyn_ffb_scale": "1", "omit_dor": false }
-  ],
-  "inject_new_ini_files": [
-    { "file": "ControllerFFB-0X16D00D5F.ini", "vendor_product": "0x16D00D5F", "friendly_name": "Simucube 2 Pro",   "dyn_ffb_scale": "1" },
-    { "file": "ControllerFFB-0X16D00D65.ini", "vendor_product": "0x16D00D65", "friendly_name": "Simucube 3 Sport", "dyn_ffb_scale": "1" },
-    { "file": "ControllerFFB-0X16D00D66.ini", "vendor_product": "0x16D00D66", "friendly_name": "Simucube 3 Pro",   "dyn_ffb_scale": "1" }
+    { "pnp_match": "VID_16D0&PID_0D66", "vid_pid_hex": "0x16d00d66", "vid_pid_dec": "382733670", "ini_file": "ControllerFFB-0X16D00D66.ini", "vendor_product": "0x16D00D66", "name": "Simucube 3 Pro" },
+    { "pnp_match": "VID_16D0&PID_0D65", "vid_pid_hex": "0x16d00d65", "vid_pid_dec": "382733669", "ini_file": "ControllerFFB-0X16D00D65.ini", "vendor_product": "0x16D00D65", "name": "Simucube 3 Sport" },
+    { "pnp_match": "VID_16D0&PID_0D60", "vid_pid_hex": "0x16d00d60", "vid_pid_dec": "382733664", "ini_file": "ControllerFFB-0X16D00D60.ini", "vendor_product": "0x16D00D60", "name": "Simcube 2 Sport" },
+    { "pnp_match": "VID_16D0&PID_0D5F", "vid_pid_hex": "0x16d00d5f", "vid_pid_dec": "382733663", "ini_file": "ControllerFFB-0X16D00D5F.ini", "vendor_product": "0x16D00D5F", "name": "Simucube 2 Pro" },
+    { "pnp_match": "VID_0EB7&PID_0006", "vid_pid_hex": "0x0eb70006", "vid_pid_dec": "246874118", "ini_file": "ControllerFFB-0x0eb70006.ini", "vendor_product": "0x0eb70006", "name": "FanatecDD1" },
+    { "pnp_match": "VID_0EB7&PID_0007", "vid_pid_hex": "0x0eb70007", "vid_pid_dec": "246874119", "ini_file": "ControllerFFB-0x0eb70007.ini", "vendor_product": "0x0eb70007", "name": "FanatecDD2" },
+    { "pnp_match": "VID_0483&PID_0522", "vid_pid_hex": "0x04830522", "vid_pid_dec": "75695394",  "ini_file": "ControllerFFB-0X04830522.ini", "vendor_product": "0x04830522", "name": "Simagic Alpha" },
+    { "pnp_match": "VID_2433&PID_F300", "vid_pid_hex": "0x2433f300", "vid_pid_dec": "607384320", "ini_file": "ControllerFFB-0X2433F300.ini", "vendor_product": "0x2433F300", "name": "Asetek Invicta" },
+    { "pnp_match": "VID_2433&PID_F301", "vid_pid_hex": "0x2433f301", "vid_pid_dec": "607384321", "ini_file": "ControllerFFB-0X2433F301.ini", "vendor_product": "0x2433F301", "name": "Asetek Forte" }
   ]
 }

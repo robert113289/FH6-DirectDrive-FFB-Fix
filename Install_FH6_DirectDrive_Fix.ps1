@@ -384,20 +384,17 @@ public class ForzaZipPatcher {
 "@
 }
 
-function Build-CleanDdIni([string]$vendorProd, [string]$friendlyName, [string]$dynScale = "1", [bool]$omitDor = $false) {
-    $txt = $baseDdTemplate -replace "`r?`n", "`r`n"
+function Build-CleanDdIni([string]$vendorProd, [string]$friendlyName, [string]$dynScale = "1") {
+    $txt = ($baseDdTemplate -replace "`r?`n", "`r`n").TrimEnd("`r", "`n")
     $txt = $txt -replace '(?m)^VendorProduct\s+.*$', "VendorProduct $vendorProd"
     $txt = $txt -replace '(?m)^FriendlyName\s+.*$', "FriendlyName $friendlyName"
     $txt = $txt -replace '(?m)^DynFFBScale\s+.*$', "DynFFBScale $dynScale"
-    if ($omitDor) {
-        $txt = $txt -replace '(?m)^DegreesOfRotation\s+.*\r?\n', ''
-    }
     return $txt
 }
 
 # 5. Patch inputmappingprofiles.zip (ensures multi-USB rigs like Simucube 3 + Fanatec Pedals route FFB to the wheelbase)
 if ($needsImpPatch -and (Test-Path $impPath)) {
-    $impEntries = [ForzaZipPatcher]::ReadForzaZip($impPath)
+    $impEntries = [ForzaZipPatcher]::ReadForzaZip("$backupDir\inputmappingprofiles_stock.zip")
     foreach ($e in $impEntries) {
         if ($e.Name -match "^CustomRawGameControllerProfile[1-5]\.xml$") {
             $txt = [System.Text.Encoding]::UTF8.GetString($e.UncompressedData)
@@ -417,41 +414,32 @@ if ($needsImpPatch -and (Test-Path $impPath)) {
     }
 }
 
-# 6. Patch wheeltunablesettingspc.zip from config/DirectDrive_Physics.ini & config/Target_Wheels.json
+# 6. Patch wheeltunablesettingspc.zip from clean stock backup, injecting only the active wheelbase INI in strict hex order
 if ($needsWtsPatch) {
-    $wtsEntries = [ForzaZipPatcher]::ReadForzaZip($wtsPath)
+    $wtsEntries = [ForzaZipPatcher]::ReadForzaZip("$backupDir\wheeltunablesettingspc_stock.zip")
     $sc2Entry = $wtsEntries | Where-Object { $_.Name -ieq "ControllerFFB-0X16D00D60.ini" } | Select-Object -First 1
 
-    foreach ($upg in $targetsConfig.upgrade_existing_ini_files) {
-        $e = $wtsEntries | Where-Object { $_.Name -ieq $upg.file } | Select-Object -First 1
-        if ($e) {
-            $newTxt = Build-CleanDdIni $upg.vendor_product $upg.friendly_name $upg.dyn_ffb_scale ([bool]$upg.omit_dor)
-            [ForzaZipPatcher]::UpdateEntryText($e, $newTxt)
-            if (-not $AutoMode) {
-                Write-Host "  Upgraded $($e.Name) ($($upg.friendly_name)) -> Clean Modern DD Physics" -ForegroundColor Green
-            }
-        }
-    }
+    $newTxt = Build-CleanDdIni $activeWheel.vendor_product $activeWheel.name "1"
+    $existing = $wtsEntries | Where-Object { $_.Name -ieq $activeWheel.ini_file } | Select-Object -First 1
 
-    foreach ($add in $targetsConfig.inject_new_ini_files) {
-        $existing = $wtsEntries | Where-Object { $_.Name -ieq $add.file } | Select-Object -First 1
-        $newTxt = Build-CleanDdIni $add.vendor_product $add.friendly_name $add.dyn_ffb_scale $false
-        if ($existing) {
-            [ForzaZipPatcher]::UpdateEntryText($existing, $newTxt)
-        } elseif ($sc2Entry) {
-            $newEntry = New-Object ForzaZipPatcher+RawEntry
-            $newEntry.Name = $add.file
-            $newEntry.VerMade = $sc2Entry.VerMade
-            $newEntry.VerNeed = $sc2Entry.VerNeed
-            $newEntry.Flags = $sc2Entry.Flags
-            $newEntry.Method = $sc2Entry.Method
-            $newEntry.DosTime = $sc2Entry.DosTime
-            [ForzaZipPatcher]::UpdateEntryText($newEntry, $newTxt)
-            $idx = $wtsEntries.IndexOf($sc2Entry)
-            $wtsEntries.Insert($idx + 1, $newEntry)
-            if (-not $AutoMode) {
-                Write-Host "  Added $($add.file) ($($add.friendly_name)) -> Clean Modern DD Physics" -ForegroundColor Green
-            }
+    if ($existing) {
+        [ForzaZipPatcher]::UpdateEntryText($existing, $newTxt)
+        if (-not $AutoMode) {
+            Write-Host "  Upgraded $($existing.Name) ($($activeWheel.name)) -> Clean Modern DD Physics" -ForegroundColor Green
+        }
+    } elseif ($sc2Entry) {
+        $newEntry = New-Object ForzaZipPatcher+RawEntry
+        $newEntry.Name = $activeWheel.ini_file
+        $newEntry.VerMade = $sc2Entry.VerMade
+        $newEntry.VerNeed = $sc2Entry.VerNeed
+        $newEntry.Flags = $sc2Entry.Flags
+        $newEntry.Method = $sc2Entry.Method
+        $newEntry.DosTime = $sc2Entry.DosTime
+        [ForzaZipPatcher]::UpdateEntryText($newEntry, $newTxt)
+        $idx = $wtsEntries.IndexOf($sc2Entry)
+        $wtsEntries.Insert($idx + 1, $newEntry)
+        if (-not $AutoMode) {
+            Write-Host "  Injected $($activeWheel.ini_file) ($($activeWheel.name)) -> Clean Modern DD Physics" -ForegroundColor Green
         }
     }
 
